@@ -1,0 +1,19 @@
+# Changes here will be overwritten by Copier
+_commit: 5.4.0
+_src_path: https://github.com/DiamondLightSource/python-copier-template.git
+author_email: urszula.neuman@diamond.ac.uk
+author_name: Urszula Neuman
+component_lifecycle: experimental
+component_owner: group:default/beamline-controls
+component_type: application
+description: Python driver for Planar Motor
+distribution_name: dls-planar-motor
+docker: false
+docs_type: README
+git_platform: github.com
+github_org: DiamondLightSource
+package_name: dls_planar_motor
+pypi: true
+repo_name: dls-planar-motor
+strict_typing: true
+type_checker: pyright

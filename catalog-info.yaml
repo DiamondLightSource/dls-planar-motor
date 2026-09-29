@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dls-planar-motor
+  title: dls-planar-motor
+  description: Python driver for Planar Motor
+spec:
+  type: application
+  lifecycle: experimental
+  owner: group:default/beamline-controls
