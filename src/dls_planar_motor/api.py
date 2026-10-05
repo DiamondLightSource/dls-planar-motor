@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from asyncua import Client
+from asyncua import Client, ua
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -15,6 +15,11 @@ async def lifespan(app: FastAPI):
     plc_client = Client(url=PLC_URL, timeout=1500)
     try:
         await plc_client.connect()
+        # 1. Adapt dynamically to your exact library version's definition loader
+        if hasattr(plc_client, "load_data_type_definitions"):
+            await plc_client.load_data_type_definitions()  # Modern asyncua v1.x+
+        elif hasattr(plc_client, "load_type_definitions"):
+            await plc_client.load_type_definitions()
         print("Connected to PLC successfully!")
         yield
     finally:
@@ -121,13 +126,22 @@ class XBOT1PositionCommand(BaseModel):
 @app.post("/xbot1/demanded_position")
 async def set_position(command: XBOT1PositionCommand):
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.Pos")
-        current_structure = await node.read_value()
-        current_structure[0][0] = command.x
-        current_structure[0][1] = command.y
-        current_structure[0][2] = command.z
-        await node.write_value(current_structure)
-        print("test")
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        # 1. Read the list of custom structures
+        structure_list = await node.read_value()
+        # 2. Access the first element in the list, then its .Pos attribute
+        target_struct = structure_list[0]  # xbot1
+        # 3. Modify the coordinates inside the target position array
+        target_struct.Pos[0] = float(command.x)
+        target_struct.Pos[1] = float(command.y)
+        target_struct.Pos[2] = float(command.z)
+        # 4. Wrap the entire list back up as an ExtensionObject array Variant
+        variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
+        data_value_container = ua.DataValue(variant_struct)
+        # 5. Write the whole updated list back to the PLC
+        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+
+        return {"status": "success", "detail": "Positions updated successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
@@ -136,8 +150,14 @@ async def set_position(command: XBOT1PositionCommand):
 async def activate_xbots():
     try:
         node = plc_client.get_node("ns=4;s=XbotsActivate")
-        # current_structure = await node.read_value()
-        await node.write_value(1)  #!!??
+        # 1. Wrap True in an explicit Boolean Variant
+        variant = ua.Variant(True, ua.VariantType.Boolean)
+        # 2. Wrap it inside a DataValue CONTAINER but leave Timestamps blank/None
+        data_value = ua.DataValue(variant)
+        # 3. Write purely to the Value attribute ID
+        # This completely strips out client-side timestamps that the PLC rejects
+        await node.write_attribute(ua.AttributeIds.Value, data_value)
+        return {"status": "success", "detail": "Xbots activated successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
@@ -146,18 +166,27 @@ async def activate_xbots():
 async def deactivate_xbots():
     try:
         node = plc_client.get_node("ns=4;s=XbotsActivate")
-        await node.write_value(0)  #!!??
+        variant = ua.Variant(False, ua.VariantType.Boolean)
+        data_value = ua.DataValue(variant)
+        await node.write_attribute(ua.AttributeIds.Value, data_value)
+        return {"status": "success", "detail": "Xbots deactivated successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
-@app.post("/xbot1/exe_move")
+@app.post("/xbot1/exe_move")  # not tested yet
 async def xbot1_exe_move():
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.Execute")
-        current_structure = await node.read_value()
-        current_structure[0] = 1
-        await node.write_value(current_structure)  #!!??
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        structure_list = await node.read_value()
+        # 2. Access the first element in the list, then its .Pos attribute
+        target_struct = structure_list[0]
+        target_struct.Execute = 1
+        # 4. Wrap the entire list back up as an ExtensionObject array Variant
+        variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
+        data_value_container = ua.DataValue(variant_struct)
+        # 5. Write the whole updated list back to the PLC
+        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
