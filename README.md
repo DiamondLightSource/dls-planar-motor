@@ -7,8 +7,9 @@
 
 Python driver for Planar Motor
 
-This is where you should write a short paragraph that describes what your module does,
-how it does it, and why people should use it.
+This module uses asyncua python library to creat a client which connects to UPC AI server on a PLC device.
+This is an alternative way of comunication with the PLC that bypasses the EPICS layer.
+Additionally the module uses fastAPI python library to creat a simple API that can be used by other devices.
 
 What            | Where
 :---:           | :---:
@@ -16,18 +17,13 @@ Source          | <https://github.com/DiamondLightSource/dls-planar-motor>
 PyPI            | `pip install dls-planar-motor`
 Releases        | <https://github.com/DiamondLightSource/dls-planar-motor/releases>
 
-This is where you should put some images or code snippets that illustrate
-some relevant examples. If it is a library then you might put some
-introductory code here:
-
-```python
-from dls_planar_motor import __version__
-
-print(f"Hello dls_planar_motor {__version__}")
-```
-
-Or if it is a commandline tool then you might put some example commands here:
-
+This is a command line service. 
+To check the version call:
 ```
 python -m dls_planar_motor --version
+```
+
+To bring the fast API up and expose a banch of get and set functions to a localhost call:
+```
+python -m dls_planar_motor --serve
 ```

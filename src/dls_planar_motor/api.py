@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="DLS Planar Motor Control API", lifespan=lifespan)
 
+#### GET STATUS ####
+
 
 @app.get("/plc_health")
 async def get_plc_health():
@@ -51,57 +53,13 @@ async def get_xbot1_status():
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
-@app.get("/xbot1/x_position")
-async def get_xbot1_x_pos():
+@app.get("/xbot1/position")
+async def get_xbot1_pos():
     try:
-        node = plc_client.get_node("ns=4;s=XbotPos.X")
-        xbot_x_pos = await node.read_value()
-        xbot1_x_pos = xbot_x_pos[0]
-        return {"xbot1_x_pos": xbot1_x_pos}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
-
-
-@app.get("/xbot1/y_position")
-async def get_xbot1_y_pos():
-    try:
-        node = plc_client.get_node("ns=4;s=XbotPos.Y")
-        xbot_y_pos = await node.read_value()
-        xbot1_y_pos = xbot_y_pos[0]
-        return {"xbot1_y_pos": xbot1_y_pos}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
-
-
-@app.get("/xbot1/z_position")
-async def get_xbot1_z_pos():
-    try:
-        node = plc_client.get_node("ns=4;s=XbotPos.Y")
-        xbot_z_pos = await node.read_value()
-        xbot1_z_pos = xbot_z_pos[0]
-        return {"xbot1_z_pos": xbot1_z_pos}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
-
-
-@app.get("/xbot1/xy_vel")
-async def get_xbot1_xy_vel():
-    try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.LongAxisAccVel")
-        xbot_xy_vel = await node.read_value()
-        xbot1_xy_vel = xbot_xy_vel[0][1]  # !!!!
-        return {"xbot1_xy_vel": xbot1_xy_vel}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
-
-
-@app.get("/xbot1/z_vel")
-async def get_xbot1_z_vel():
-    try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.ShortAxisVel")
-        xbot_z_vel = await node.read_value()
-        xbot1_z_vel = xbot_z_vel[0][0]
-        return {"xbot1_z_vel": xbot1_z_vel}
+        node = plc_client.get_node("ns=4;s=XbotPos")
+        xbot_pos = await node.read_value()
+        xbot1_pos = xbot_pos[0]
+        return {"xbot1_pos": xbot1_pos}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
@@ -109,12 +67,37 @@ async def get_xbot1_z_vel():
 @app.get("/xbot1/xy_acc")
 async def get_xbot1_xy_acc():
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.LongAxisAccVel")
-        xbot_xy_acc = await node.read_value()
-        xbot1_xy_acc = xbot_xy_acc[0][0]
-        return {"xbot1_xy_acc": xbot1_xy_acc}
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        xbot_xy_acc_vel = await node.read_value()
+        xbot1_xy_acc_vel = xbot_xy_acc_vel[0].LongAxisAccVel
+        return {"xbot1_xy_acc": xbot1_xy_acc_vel[0]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
+
+
+@app.get("/xbot1/xy_vel")
+async def get_xbot1_xy_vel():
+    try:
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        xbot_xy_acc_vel = await node.read_value()
+        xbot1_xy_acc_vel = xbot_xy_acc_vel[0].LongAxisAccVel
+        return {"xbot1_xy_vel": xbot1_xy_acc_vel[1]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
+
+
+@app.get("/xbot1/z_vel")
+async def get_xbot1_z_vel():
+    try:
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        xbot_z_vel = await node.read_value()
+        xbot1_z_vel = xbot_z_vel[0].ShortAxisVel
+        return {"xbot1_z_vel": xbot1_z_vel[0]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
+
+
+#### SET VALUES ####
 
 
 class XBOT1PositionCommand(BaseModel):
@@ -174,7 +157,7 @@ async def deactivate_xbots():
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
-@app.post("/xbot1/exe_move")  # not tested yet
+@app.post("/xbot1/exe_move")
 async def xbot1_exe_move():
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
@@ -187,6 +170,7 @@ async def xbot1_exe_move():
         data_value_container = ua.DataValue(variant_struct)
         # 5. Write the whole updated list back to the PLC
         await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        return {"status": "success", "detail": "Xbots moved successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
@@ -194,43 +178,62 @@ async def xbot1_exe_move():
 @app.post("/xbot1/stop_move")
 async def xbot1_stop_move():
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.Stop")
-        current_structure = await node.read_value()
-        current_structure[0] = 1
-        await node.write_value(current_structure)  #!!??
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        structure_list = await node.read_value()
+        # 2. Access the first element in the list, then its .Pos attribute
+        target_struct = structure_list[0]
+        target_struct.Stop = 1
+        # 4. Wrap the entire list back up as an ExtensionObject array Variant
+        variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
+        data_value_container = ua.DataValue(variant_struct)
+        # 5. Write the whole updated list back to the PLC
+        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        return {"status": "success", "detail": "Xbots stopped successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
-@app.post("/xbot1/set_xy_vel")
-async def xbot1_set_xy_vel():
+class XBOT1LongAxisAccVelCommand(BaseModel):
+    vel: float
+    acc: float
+
+
+@app.post("/xbot1/set_xy_acc_vel")
+async def xbot1_set_xy_acc_vel(command: XBOT1LongAxisAccVelCommand):
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.LongAxisAccVel")
-        current_structure = await node.read_value()
-        current_structure[0][1] = 0.1  # this needs to be a command
-        await node.write_value(current_structure)  #!!??
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        structure_list = await node.read_value()
+        # 2. Access the first element in the list, then its .Pos attribute
+        target_struct = structure_list[0]
+        target_struct.LongAxisAccVel[1] = float(command.vel)  # 1 is vel
+        target_struct.LongAxisAccVel[0] = float(command.acc)  # 0 is acc
+        # 4. Wrap the entire list back up as an ExtensionObject array Variant
+        variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
+        data_value_container = ua.DataValue(variant_struct)
+        # 5. Write the whole updated list back to the PLC
+        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        return {"status": "success", "detail": "Xbots xy vel and acc set successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
-@app.post("/xbot1/set_xy_acc")
-async def xbot1_set_xy_acc():
+class XBOT1ShortAxisVelCommand(BaseModel):
+    vel: float
+
+
+@app.post("/xbot1/set_z_vel")
+async def xbot1_set_z_vel(command: XBOT1ShortAxisVelCommand):
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.LongAxisAccVel")
-        current_structure = await node.read_value()
-        current_structure[0][0] = 1.0  # this needs to be a command
-        await node.write_value(current_structure)  #!!??
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
-
-
-@app.post("/xbot1/set_xy_acc")
-async def xbot1_set_z_vel():
-    try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs.ShortAxisVel")
-        current_structure = await node.read_value()
-        current_structure[0][0] = 0.1  # this needs to be a command
-        await node.write_value(current_structure)  #!!??
-
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        structure_list = await node.read_value()
+        # 2. Access the first element in the list, then its .Pos attribute
+        target_struct = structure_list[0]
+        target_struct.ShortAxisVel[0] = float(command.vel)  # 0 is vel
+        # 4. Wrap the entire list back up as an ExtensionObject array Variant
+        variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
+        data_value_container = ua.DataValue(variant_struct)
+        # 5. Write the whole updated list back to the PLC
+        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        return {"status": "success", "detail": "Xbots z vel set successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
