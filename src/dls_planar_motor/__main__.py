@@ -5,8 +5,6 @@ from collections.abc import Sequence
 
 import uvicorn
 
-from dls_planar_motor.ping_plc import PingPLC
-
 from . import __version__
 
 __all__ = ["main"]
@@ -22,11 +20,6 @@ def main(args: Sequence[str] | None = None) -> None:
         version=__version__,
     )
     parser.add_argument(
-        "-p",
-        "--ping",
-        action=PingPLC,
-    )
-    parser.add_argument(
         "--serve", action="store_true", help="Start the FastAPI control web server"
     )
 
@@ -35,7 +28,7 @@ def main(args: Sequence[str] | None = None) -> None:
     if parsed_args.serve:
         print("Starting Control API Server...")
         # Points directly to the app instance inside this current file
-        uvicorn.run("dls_planar_motor.api:app", host="0.0.0.0", port=8000)
+        uvicorn.run("dls_planar_motor.api:app", host="0.0.0.0", port=8000)  # type: ignore
 
 
 if __name__ == "__main__":

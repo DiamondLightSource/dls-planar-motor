@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+from typing import Any
 
-from asyncua import Client, ua
+from asyncua import ua
+from asyncua.client.client import Client
+from asyncua.ua.attribute_ids import AttributeIds
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 PLC_URL = "opc.tcp://192.168.1.3:4840"
-plc_client = None
+plc_client: Client | None = None
 
 
 @asynccontextmanager
@@ -27,13 +30,15 @@ async def lifespan(app: FastAPI):
         await plc_client.disconnect()
 
 
-app = FastAPI(title="DLS Planar Motor Control API", lifespan=lifespan)
+app: FastAPI = FastAPI(title="DLS Planar Motor Control API", lifespan=lifespan)
 
 #### GET STATUS ####
 
 
 @app.get("/plc_health")
-async def get_plc_health():
+async def get_plc_health() -> dict[str, Any]:
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=PLC_Healthy_Flag")
         is_healthy = await node.read_value()
@@ -43,7 +48,9 @@ async def get_plc_health():
 
 
 @app.get("/xbot1/status")
-async def get_xbot1_status():
+async def get_xbot1_status() -> dict[str, Any]:
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotStatus")
         xbot_status = await node.read_value()
@@ -55,6 +62,8 @@ async def get_xbot1_status():
 
 @app.get("/xbot1/position")
 async def get_xbot1_pos():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotPos")
         xbot_pos = await node.read_value()
@@ -66,6 +75,8 @@ async def get_xbot1_pos():
 
 @app.get("/xbot1/xy_acc")
 async def get_xbot1_xy_acc():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         xbot_xy_acc_vel = await node.read_value()
@@ -77,6 +88,8 @@ async def get_xbot1_xy_acc():
 
 @app.get("/xbot1/xy_vel")
 async def get_xbot1_xy_vel():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         xbot_xy_acc_vel = await node.read_value()
@@ -88,6 +101,8 @@ async def get_xbot1_xy_vel():
 
 @app.get("/xbot1/z_vel")
 async def get_xbot1_z_vel():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         xbot_z_vel = await node.read_value()
@@ -108,6 +123,8 @@ class XBOT1PositionCommand(BaseModel):
 
 @app.post("/xbot1/demanded_position")
 async def set_position(command: XBOT1PositionCommand):
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         # 1. Read the list of custom structures
@@ -122,7 +139,7 @@ async def set_position(command: XBOT1PositionCommand):
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
         # 5. Write the whole updated list back to the PLC
-        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        await node.write_attribute(AttributeIds.Value, data_value_container)
 
         return {"status": "success", "detail": "Positions updated successfully."}
     except Exception as e:
@@ -131,6 +148,8 @@ async def set_position(command: XBOT1PositionCommand):
 
 @app.post("/xbots/activate")
 async def activate_xbots():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotsActivate")
         # 1. Wrap True in an explicit Boolean Variant
@@ -139,7 +158,7 @@ async def activate_xbots():
         data_value = ua.DataValue(variant)
         # 3. Write purely to the Value attribute ID
         # This completely strips out client-side timestamps that the PLC rejects
-        await node.write_attribute(ua.AttributeIds.Value, data_value)
+        await node.write_attribute(AttributeIds.Value, data_value)
         return {"status": "success", "detail": "Xbots activated successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
@@ -147,11 +166,13 @@ async def activate_xbots():
 
 @app.post("/xbots/deactivate")
 async def deactivate_xbots():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotsActivate")
         variant = ua.Variant(False, ua.VariantType.Boolean)
         data_value = ua.DataValue(variant)
-        await node.write_attribute(ua.AttributeIds.Value, data_value)
+        await node.write_attribute(AttributeIds.Value, data_value)
         return {"status": "success", "detail": "Xbots deactivated successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
@@ -159,6 +180,8 @@ async def deactivate_xbots():
 
 @app.post("/xbot1/exe_move")
 async def xbot1_exe_move():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
@@ -169,7 +192,7 @@ async def xbot1_exe_move():
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
         # 5. Write the whole updated list back to the PLC
-        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots moved successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
@@ -177,6 +200,8 @@ async def xbot1_exe_move():
 
 @app.post("/xbot1/stop_move")
 async def xbot1_stop_move():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
@@ -187,7 +212,7 @@ async def xbot1_stop_move():
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
         # 5. Write the whole updated list back to the PLC
-        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots stopped successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
@@ -200,6 +225,8 @@ class XBOT1LongAxisAccVelCommand(BaseModel):
 
 @app.post("/xbot1/set_xy_acc_vel")
 async def xbot1_set_xy_acc_vel(command: XBOT1LongAxisAccVelCommand):
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
@@ -211,7 +238,7 @@ async def xbot1_set_xy_acc_vel(command: XBOT1LongAxisAccVelCommand):
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
         # 5. Write the whole updated list back to the PLC
-        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots xy vel and acc set successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
@@ -223,6 +250,8 @@ class XBOT1ShortAxisVelCommand(BaseModel):
 
 @app.post("/xbot1/set_z_vel")
 async def xbot1_set_z_vel(command: XBOT1ShortAxisVelCommand):
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
@@ -233,7 +262,7 @@ async def xbot1_set_z_vel(command: XBOT1ShortAxisVelCommand):
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
         # 5. Write the whole updated list back to the PLC
-        await node.write_attribute(ua.AttributeIds.Value, data_value_container)
+        await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots z vel set successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
