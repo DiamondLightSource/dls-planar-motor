@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
     plc_client = Client(url=PLC_URL, timeout=1500)
     try:
         await plc_client.connect()
-        # 1. Adapt dynamically to your exact library version's definition loader
+        # Adapt dynamically to your exact library version's definition loader
         if hasattr(plc_client, "load_data_type_definitions"):
             await plc_client.load_data_type_definitions()  # Modern asyncua v1.x+
         elif hasattr(plc_client, "load_type_definitions"):
@@ -112,6 +112,19 @@ async def get_xbot1_z_vel():
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
+@app.get("/xbot1/exe_status")
+async def get_xbot1_exe_status():
+    if plc_client is None:
+        raise HTTPException(status_code=503, detail="PLC client is not initialized")
+    try:
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
+        xbot_exe_status = await node.read_value()
+        xbot1_exe_status = xbot_exe_status[0].Execute
+        return {"xbot1_exe_status": xbot1_exe_status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
+
+
 #### SET VALUES ####
 
 
@@ -185,13 +198,12 @@ async def xbot1_exe_move():
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
-        # 2. Access the first element in the list, then its .Pos attribute
         target_struct = structure_list[0]
         target_struct.Execute = 1
-        # 4. Wrap the entire list back up as an ExtensionObject array Variant
+        # Wrap the entire list back up as an ExtensionObject array Variant
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
-        # 5. Write the whole updated list back to the PLC
+        # Write the whole updated list back to the PLC
         await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots moved successfully."}
     except Exception as e:
@@ -205,13 +217,10 @@ async def xbot1_stop_move():
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
-        # 2. Access the first element in the list, then its .Pos attribute
         target_struct = structure_list[0]
         target_struct.Stop = 1
-        # 4. Wrap the entire list back up as an ExtensionObject array Variant
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
-        # 5. Write the whole updated list back to the PLC
         await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots stopped successfully."}
     except Exception as e:
@@ -230,14 +239,11 @@ async def xbot1_set_xy_acc_vel(command: XBOT1LongAxisAccVelCommand):
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
-        # 2. Access the first element in the list, then its .Pos attribute
         target_struct = structure_list[0]
         target_struct.LongAxisAccVel[1] = float(command.vel)  # 1 is vel
         target_struct.LongAxisAccVel[0] = float(command.acc)  # 0 is acc
-        # 4. Wrap the entire list back up as an ExtensionObject array Variant
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
-        # 5. Write the whole updated list back to the PLC
         await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots xy vel and acc set successfully."}
     except Exception as e:
@@ -255,13 +261,10 @@ async def xbot1_set_z_vel(command: XBOT1ShortAxisVelCommand):
     try:
         node = plc_client.get_node("ns=4;s=XbotMoveAbs")
         structure_list = await node.read_value()
-        # 2. Access the first element in the list, then its .Pos attribute
         target_struct = structure_list[0]
         target_struct.ShortAxisVel[0] = float(command.vel)  # 0 is vel
-        # 4. Wrap the entire list back up as an ExtensionObject array Variant
         variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
         data_value_container = ua.DataValue(variant_struct)
-        # 5. Write the whole updated list back to the PLC
         await node.write_attribute(AttributeIds.Value, data_value_container)
         return {"status": "success", "detail": "Xbots z vel set successfully."}
     except Exception as e:
