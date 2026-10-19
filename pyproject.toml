@@ -13,7 +13,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 description = "Python driver for Planar Motor"
-dependencies = ["uvicorn","asyncua", "fastapi"]
+dependencies = [
+    "uvicorn[standard]",
+    "asyncua",
+    "fastapi",
+]
 dynamic = ["version"]
 license.file = "LICENSE"
 readme = "README.md"

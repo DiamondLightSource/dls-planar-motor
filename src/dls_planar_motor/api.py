@@ -1,11 +1,16 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
 from asyncua import ua
 from asyncua.client.client import Client
+from asyncua.common.node import Node
 from asyncua.ua.attribute_ids import AttributeIds
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+
+from dls_planar_motor.html_monitor_page import HTMLMonitorPage
 
 PLC_URL = "opc.tcp://192.168.1.3:4840"
 plc_client: Client | None = None
@@ -30,7 +35,27 @@ async def lifespan(app: FastAPI):
         await plc_client.disconnect()
 
 
-app: FastAPI = FastAPI(title="DLS Planar Motor Control API", lifespan=lifespan)
+app: FastAPI = FastAPI(
+    title="DLS Planar Motor Control API",
+    lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "WebSockets",
+            "description": "🚀 **WebSocket Stream:** Connect using a WS client to "
+            "`ws://localhost:8000/xbot1/status/stream` "
+            "to receive real-time PLC updates.",
+        }
+    ],
+)
+
+
+@app.get("/monitor", response_class=HTMLResponse)
+async def get_monitor_page():
+    """Serves a clean diagnostic dashboard that connects automatically to WebSocket."""
+    test_page = HTMLMonitorPage()
+    html_content = test_page.get_page_content()
+    return HTMLResponse(content=html_content)
+
 
 #### GET STATUS ####
 
@@ -250,22 +275,72 @@ async def xbot1_set_xy_acc_vel(command: XBOT1LongAxisAccVelCommand):
         raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
 
 
-class XBOT1ShortAxisVelCommand(BaseModel):
-    vel: float
+class XbotSubHandler:
+    """
+    Handles incoming data change events from the OPC UA server
+    and forwards them to the connected WebSocket client.
+    """
+
+    def __init__(self, websocket: WebSocket):
+        self.websocket = websocket
+        # Get the current running event loop to thread-safely schedule tasks
+        self.loop = asyncio.get_running_loop()
+
+    def datachange_notification(
+        self, _node: Node, val: Any, _data: ua.DataChangeNotification
+    ) -> None:
+        # This method is triggered by the asyncua client when the PLC value changes
+        try:
+            # Extract xbot1 from the status array
+            xbot1_status = val[0]
+
+            # Schedule the async WebSocket push from the synchronous callback context
+            asyncio.run_coroutine_threadsafe(
+                self.websocket.send_json({"xbot1_status": xbot1_status}), self.loop
+            )
+        except Exception as e:
+            print(f"Error forwarding data change: {e}")
 
 
-@app.post("/xbot1/set_z_vel")
-async def xbot1_set_z_vel(command: XBOT1ShortAxisVelCommand):
+@app.websocket("/xbot1/status/stream")
+async def stream_xbot1_status(websocket: WebSocket):
     if plc_client is None:
-        raise HTTPException(status_code=503, detail="PLC client is not initialized")
+        await websocket.close(code=1013, reason="PLC client is not initialized")
+        return
+
+    await websocket.accept()
+
     try:
-        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
-        structure_list = await node.read_value()
-        target_struct = structure_list[0]
-        target_struct.ShortAxisVel[0] = float(command.vel)  # 0 is vel
-        variant_struct = ua.Variant(structure_list, ua.VariantType.ExtensionObject)
-        data_value_container = ua.DataValue(variant_struct)
-        await node.write_attribute(AttributeIds.Value, data_value_container)
-        return {"status": "success", "detail": "Xbots z vel set successfully."}
+        # 1. Locate the OPC UA Node
+        node = plc_client.get_node("ns=4;s=XbotStatus")
+
+        # 2. Create an OPC UA Subscription (Publishing interval in milliseconds)
+        handler = XbotSubHandler(websocket)
+        subscription = await plc_client.create_subscription(100, handler)  # type: ignore
+
+        # 3. Subscribe to data changes on the XbotStatus node
+        handle = await subscription.subscribe_data_change(node)
+
+        # 4. Keep the WebSocket connection alive until the client disconnects
+        while True:
+            # We don't expect messages from the client, but this keeps the
+            # connection open and detects when the client closes the window.
+            await websocket.receive_text()
+
+    except WebSocketDisconnect:
+        print("API Client disconnected from stream.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Hardware failure: {e}") from e
+        print(f"Hardware streaming failure: {e}")
+    finally:
+        # 5. Clean up subscriptions to avoid leaking resources on the PLC side
+        try:
+            await subscription.unsubscribe(handle)  # type: ignore
+            await subscription.delete()  # type: ignore
+        except NameError:
+            pass  # Subscription was never successfully created
+
+        # Ensure the socket safely closes if it hasn't already
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass  # Socket already closed
