@@ -291,12 +291,12 @@ class XbotSubHandler:
     ) -> None:
         # This method is triggered by the asyncua client when the PLC value changes
         try:
-            # Extract xbot1 from the status array
-            xbot1_status = val[0]
+            # Extract the 'Done' attribute from the first element of the collection
+            xbot1_done = val[0].Done
 
             # Schedule the async WebSocket push from the synchronous callback context
             asyncio.run_coroutine_threadsafe(
-                self.websocket.send_json({"xbot1_status": xbot1_status}), self.loop
+                self.websocket.send_json({"xbot1_done": xbot1_done}), self.loop
             )
         except Exception as e:
             print(f"Error forwarding data change: {e}")
@@ -311,20 +311,19 @@ async def stream_xbot1_status(websocket: WebSocket):
     await websocket.accept()
 
     try:
-        # 1. Locate the OPC UA Node
-        node = plc_client.get_node("ns=4;s=XbotStatus")
+        # 1. Locate the new OPC UA Node (XbotMoveAbs)
+        node = plc_client.get_node("ns=4;s=XbotMoveAbs")
 
         # 2. Create an OPC UA Subscription (Publishing interval in milliseconds)
+        # Note: Ensure your handler class extracts '.Done' or the index if needed
         handler = XbotSubHandler(websocket)
         subscription = await plc_client.create_subscription(100, handler)  # type: ignore
 
-        # 3. Subscribe to data changes on the XbotStatus node
+        # 3. Subscribe to data changes on the XbotMoveAbs node
         handle = await subscription.subscribe_data_change(node)
 
         # 4. Keep the WebSocket connection alive until the client disconnects
         while True:
-            # We don't expect messages from the client, but this keeps the
-            # connection open and detects when the client closes the window.
             await websocket.receive_text()
 
     except WebSocketDisconnect:

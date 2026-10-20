@@ -37,7 +37,7 @@ class HTMLMonitorPage:
             <span id="conn-badge" class="badge disconnected">Disconnected</span></p>
 
             <div class="status-container">
-                <span class="status-label">Xbot1 Status Code:</span>
+                <span class="status-label">Xbot1 Done Flag:</span>
                 <span id="xbot-status" class="status-value">--</span>
             </div>
 
@@ -70,9 +70,9 @@ class HTMLMonitorPage:
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.xbot1_status !== undefined) {
-                        statusDisplay.innerText = data.xbot1_status;
-                        logMessage(`Updated status value: ${data.xbot1_status}`);
+                    if (data.xbot1_done !== undefined) {
+                        statusDisplay.innerText = data.xbot1_done;
+                        logMessage(`Updated Done flag: ${data.xbot1_done}`);
                     }
                 } catch (err) {
                     logMessage(`Data error: ${event.data}`);
